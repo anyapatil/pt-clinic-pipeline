@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Scan cash-pay clinic websites to estimate PT staff count.
+Scan clinic websites to estimate PT staff count.
 
 Usage:
-    python scan_staff.py                    # all eligible clinics
+    python scan_staff.py                    # cash-pay clinics only
+    python scan_staff.py --all              # all clinics with a website
     python scan_staff.py --city Boston      # one market
     python scan_staff.py --limit 50         # cap at N clinics
     python scan_staff.py --force            # re-scan already-scanned clinics
@@ -32,14 +33,16 @@ def get_targets(
     city: str = None,
     limit: int = None,
     force: bool = False,
+    all_clinics: bool = False,
     db_path: str = DB_PATH,
 ) -> list[dict]:
     conn = get_conn(db_path)
     conditions = [
-        "cash_pay_signal = 1",
         "website IS NOT NULL",
         "website != ''",
     ]
+    if not all_clinics:
+        conditions.append("cash_pay_signal = 1")
     params: list = []
 
     if city:
@@ -66,27 +69,33 @@ def main():
     parser.add_argument("--city",  default=None, help="Filter to a single city label (e.g. 'Boston')")
     parser.add_argument("--limit", type=int, default=None, help="Max clinics to scan")
     parser.add_argument("--force", action="store_true", help="Re-scan already-scanned clinics")
+    parser.add_argument("--all",   dest="all_clinics", action="store_true",
+                        help="Scan all clinics with a website, not just cash-pay flagged ones")
     args = parser.parse_args()
 
     init_db()
-    targets = get_targets(city=args.city, limit=args.limit, force=args.force)
+    targets = get_targets(
+        city=args.city, limit=args.limit, force=args.force,
+        all_clinics=args.all_clinics,
+    )
 
     if not targets:
-        logger.info("No eligible clinics found. All cash-pay clinics with websites may already be scanned.")
+        logger.info("No eligible clinics found.")
         return
 
-    logger.info(f"Scanning {len(targets)} clinic{'s' if len(targets) != 1 else ''} for staff count...")
+    scope = "all" if args.all_clinics else "cash-pay"
+    logger.info(f"Scanning {len(targets)} {scope} clinic{'s' if len(targets) != 1 else ''} for staff count...")
 
     scanned = 0
     for i, clinic in enumerate(targets, 1):
         logger.info(f"[{i}/{len(targets)}] {clinic['name']} ({clinic['city']})")
         logger.info(f"  URL: {clinic['website']}")
 
-        count = scrape_staff_count(clinic["website"])
-        logger.info(f"  → staff_count = {count}")
+        count, names = scrape_staff_count(clinic["website"])
+        logger.info(f"  → staff_count = {count}  names = {names[:3]}{'…' if len(names) > 3 else ''}")
 
         if count is not None:
-            update_staff_count(clinic["id"], count)
+            update_staff_count(clinic["id"], count, names)
             scanned += 1
 
         if i < len(targets):

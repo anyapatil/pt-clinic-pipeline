@@ -65,6 +65,7 @@ def init_db(db_path: str = DB_PATH):
     # Non-destructive migrations: add columns introduced after initial schema
     migrations = [
         "ALTER TABLE clinics ADD COLUMN staff_count INTEGER",
+        "ALTER TABLE clinics ADD COLUMN staff_names TEXT",
     ]
     for stmt in migrations:
         try:
@@ -253,11 +254,11 @@ def count_clinics(
     return row[0]
 
 
-def update_staff_count(clinic_id: int, count: int, db_path: str = DB_PATH):
+def update_staff_count(clinic_id: int, count: int, names: list = None, db_path: str = DB_PATH):
     conn = get_conn(db_path)
     conn.execute(
-        "UPDATE clinics SET staff_count = ? WHERE id = ?",
-        (count, clinic_id),
+        "UPDATE clinics SET staff_count = ?, staff_names = ? WHERE id = ?",
+        (count, json.dumps(names or []), clinic_id),
     )
     conn.commit()
     conn.close()

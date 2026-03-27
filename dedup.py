@@ -19,6 +19,7 @@ import json
 import logging
 import re
 from collections import defaultdict
+from typing import Any
 
 from database import get_conn, DB_PATH
 
@@ -96,36 +97,99 @@ def merge_into(canonical: dict, others: list) -> dict:
     return merged
 
 
+def normalize_phone(phone: str) -> str:
+    """Strip non-digits and return last 10 digits (US numbers)."""
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", phone)
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+# ---------------------------------------------------------------------------
+# Union-Find
+# ---------------------------------------------------------------------------
+
+class UnionFind:
+    def __init__(self):
+        self._parent: dict[Any, Any] = {}
+
+    def find(self, x):
+        self._parent.setdefault(x, x)
+        if self._parent[x] != x:
+            self._parent[x] = self.find(self._parent[x])
+        return self._parent[x]
+
+    def union(self, a, b):
+        self._parent[self.find(a)] = self.find(b)
+
+    def groups(self) -> dict:
+        result: dict[Any, list] = defaultdict(list)
+        for x in self._parent:
+            result[self.find(x)].append(x)
+        return dict(result)
+
+
 def run(dry_run: bool = True, db_path: str = DB_PATH):
     conn = get_conn(db_path)
     all_rows = [dict(r) for r in conn.execute("SELECT * FROM clinics").fetchall()]
     logger.info(f"Total records before dedup: {len(all_rows)}")
 
-    # Group by normalised address
-    groups: dict[str, list] = defaultdict(list)
-    no_address = []
+    id_to_row = {r["id"]: r for r in all_rows}
+    uf = UnionFind()
+
+    # Seed every id into the UF so isolated records appear in groups() too
+    for r in all_rows:
+        uf.find(r["id"])
+
+    # --- Pass 1: group by normalised address (practitioner-name safety applies) ---
+    addr_groups: dict[str, list[int]] = defaultdict(list)
     for r in all_rows:
         key = normalize_address(r.get("address") or "")
         if key:
-            groups[key].append(r)
-        else:
-            no_address.append(r)
+            addr_groups[key].append(r["id"])
 
-    # Only consolidate groups where at least one record is an individual
-    # practitioner name (e.g. "Jane Smith, PT, DPT"). Groups made up entirely
-    # of distinct clinic names are likely co-located different businesses and
-    # should be left untouched.
-    dup_groups = {
-        k: v for k, v in groups.items()
-        if len(v) > 1 and any(is_practitioner_name(r.get("name") or "") for r in v)
-    }
-    logger.info(f"Address groups with duplicates: {len(dup_groups)}")
+    for addr_key, ids in addr_groups.items():
+        if len(ids) < 2:
+            continue
+        rows_in_group = [id_to_row[i] for i in ids]
+        # Safety: only merge address groups where at least one is a practitioner name.
+        # Co-located distinct businesses share an address but should not be merged.
+        if not any(is_practitioner_name(r.get("name") or "") for r in rows_in_group):
+            continue
+        for i in ids[1:]:
+            uf.union(ids[0], i)
+
+    # --- Pass 2: group by (normalised address + normalised phone) ---
+    # Same address + same phone = definitely the same business, no practitioner
+    # safety check needed.  Phone-only matching is too broad (a practitioner may
+    # share a clinic's main number without being a duplicate of the clinic entity).
+    addr_phone_groups: dict[tuple, list[int]] = defaultdict(list)
+    for r in all_rows:
+        addr = normalize_address(r.get("address") or "")
+        phone = normalize_phone(r.get("phone") or "")
+        if addr and phone:
+            addr_phone_groups[(addr, phone)].append(r["id"])
+
+    for key, ids in addr_phone_groups.items():
+        if len(ids) < 2:
+            continue
+        for i in ids[1:]:
+            uf.union(ids[0], i)
+
+    # --- Collect groups with more than one member ---
+    raw_groups = uf.groups()
+    dup_groups: dict[int, list[dict]] = {}
+    for root, members in raw_groups.items():
+        if len(members) > 1:
+            dup_groups[root] = [id_to_row[m] for m in members]
+
+    logger.info(f"Groups with duplicates (address + phone): {len(dup_groups)}")
 
     total_to_delete = 0
     updates = []
     deletes = []
 
-    for addr_key, group in sorted(dup_groups.items(), key=lambda x: -len(x[1])):
+    for _root, group in sorted(dup_groups.items(), key=lambda x: -len(x[1])):
         group_sorted = sorted(group, key=canonical_score)
         canonical   = group_sorted[0]
         duplicates  = group_sorted[1:]

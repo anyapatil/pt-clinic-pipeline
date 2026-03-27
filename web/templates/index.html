@@ -886,6 +886,20 @@
       color: var(--ink-light);
       font-style: italic;
     }
+    .modal-staff-names {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .modal-staff-name {
+      font-size: 0.78rem;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      color: var(--ink-mid);
+    }
 
     .modal-keywords {
       display: flex;
@@ -1634,13 +1648,23 @@ function renderDetail(panel, c) {
   // Staff section
   let staffHtml;
   if (c.staff_count === null || c.staff_count === undefined) {
-    staffHtml = `<p class="modal-staff-pending">Not yet scanned — run <code>scan_staff.py</code> to populate.</p>`;
+    if (c.website) {
+      staffHtml = `<p class="modal-staff-pending">Scan pending.</p>`;
+    } else {
+      staffHtml = `<p class="modal-staff-pending">No website on file.</p>`;
+    }
   } else if (c.staff_count === 0) {
     staffHtml = `<p class="modal-staff-pending">Staff page not detected on website.</p>`;
   } else {
+    let names = [];
+    try { names = JSON.parse(c.staff_names || '[]'); } catch(e) {}
+    const namesHtml = names.length
+      ? `<div class="modal-staff-names">${names.map(n => `<span class="modal-staff-name">${esc(n)}</span>`).join('')}</div>`
+      : '';
     staffHtml = `
       <div class="modal-staff-value">${c.staff_count}</div>
-      <div class="modal-staff-label">staff listed on website</div>`;
+      <div class="modal-staff-label">staff listed on website</div>
+      ${namesHtml}`;
   }
 
   // Keywords section
