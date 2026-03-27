@@ -90,7 +90,6 @@ CASH_PAY_KEYWORDS = [
     "out-of-network",
     "out of pocket",
     "oon provider",
-    "direct access",
     "direct pay",
     "direct-pay",
     "direct care",
@@ -115,11 +114,7 @@ CASH_PAY_KEYWORDS = [
     "membership based",
     "membership-based",
     "1:1 care",
-    "1-on-1",
-    "one on one care",
-    "one-on-one care",
     "undivided attention",
-    "dedicated one-on-one",
 ]
 
 SPORTS_KEYWORDS = [

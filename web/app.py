@@ -95,6 +95,7 @@ def api_clinics():
     city = request.args.get("city", "")
     cash_pay = request.args.get("cash_pay", "") == "1"
     hide_unverified = request.args.get("hide_unverified", "") == "1"
+    zip_code = request.args.get("zip", "").strip()
     specialties = request.args.getlist("specialty")
     search = request.args.get("search", "")
     page = max(1, int(request.args.get("page", 1)))
@@ -106,6 +107,7 @@ def api_clinics():
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        zip_code=zip_code or None,
         search=search or None,
         limit=per_page,
         offset=offset,
@@ -115,6 +117,7 @@ def api_clinics():
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        zip_code=zip_code or None,
         search=search or None,
     )
 
@@ -149,6 +152,7 @@ def export_csv():
     city = request.args.get("city", "")
     cash_pay = request.args.get("cash_pay", "") == "1"
     hide_unverified = request.args.get("hide_unverified", "") == "1"
+    zip_code = request.args.get("zip", "").strip()
     specialties = request.args.getlist("specialty")
     search = request.args.get("search", "")
 
@@ -157,6 +161,7 @@ def export_csv():
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        zip_code=zip_code or None,
         search=search or None,
         limit=10_000,
         offset=0,

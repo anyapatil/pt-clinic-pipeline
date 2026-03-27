@@ -344,9 +344,10 @@
     /* ── Results header ───────────────────────────────────── */
     .results-header {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
       margin-bottom: 20px;
+      gap: 12px;
     }
 
     .results-count {
@@ -361,6 +362,108 @@
       color: var(--ink);
       font-size: 1.35rem;
     }
+
+    /* Layout toggle */
+    .layout-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .layout-btn {
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      border: none;
+      cursor: pointer;
+      color: var(--ink-light);
+      transition: background 0.15s, color 0.15s;
+    }
+    .layout-btn + .layout-btn { border-left: 1px solid var(--border); }
+    .layout-btn:hover { background: var(--cream); color: var(--ink); }
+    .layout-btn.active { background: var(--gold-faint); color: var(--gold); }
+
+    /* ── Table view ───────────────────────────────────────── */
+    .clinic-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .clinic-table thead th {
+      text-align: left;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      padding: 10px 14px;
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+      background: var(--white);
+      position: sticky;
+      top: 72px;     /* below the site header */
+      z-index: 10;
+    }
+    .clinic-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+      cursor: pointer;
+    }
+    .clinic-table tbody tr:hover { background: var(--cream); }
+    .clinic-table tbody tr.cash-pay-row { border-left: 3px solid var(--green); }
+    .clinic-table td {
+      padding: 11px 14px;
+      vertical-align: middle;
+      color: var(--ink-mid);
+    }
+    .clinic-table td.td-name {
+      font-weight: 500;
+      color: var(--ink);
+      max-width: 240px;
+    }
+    .clinic-table td.td-location { white-space: nowrap; }
+    .clinic-table td a {
+      color: var(--gold);
+      text-decoration: none;
+    }
+    .clinic-table td a:hover { text-decoration: underline; }
+    .tbl-cash-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--green-bg);
+      color: var(--green);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 2px 7px;
+      border-radius: 99px;
+      border: 1px solid rgba(45,106,79,0.2);
+      white-space: nowrap;
+    }
+    .tbl-cash-badge::before {
+      content: '';
+      width: 5px; height: 5px;
+      background: var(--green);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .tbl-bm-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--ink-light);
+      padding: 4px;
+      border-radius: 3px;
+      transition: color 0.15s;
+      display: flex;
+      align-items: center;
+    }
+    .tbl-bm-btn:hover { color: var(--gold); }
+    .tbl-bm-btn.saved { color: var(--gold); }
 
     .sort-wrap {
       display: flex;
@@ -1030,12 +1133,28 @@
         <span class="toggle-label">Hide Unverified Listings</span>
       </label>
 
+      <div class="filter-divider"></div>
+
+      <!-- ZIP filter -->
+      <span class="filter-label">ZIP</span>
+      <input class="search-input" id="filter-zip" type="text" maxlength="5"
+             placeholder="e.g. 02109" autocomplete="off"
+             style="width:100px;min-width:0;flex:none"/>
+
     </div>
   </div>
 
   <!-- Results header -->
   <div class="results-header">
     <span class="results-count" id="results-label">Loading…</span>
+    <div class="layout-toggle">
+      <button class="layout-btn active" id="layout-grid" title="Card view" onclick="setLayout('grid')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      </button>
+      <button class="layout-btn" id="layout-table" title="Table view" onclick="setLayout('table')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
   </div>
 
   <!-- Card grid -->
@@ -1076,8 +1195,10 @@ const state = {
   cashPay: false,
   search: '',
   view: 'all',           // 'all' | 'shortlist'
+  layout: 'grid',        // 'grid' | 'table'
   shortlistIds: new Set(),
   hideUnverified: false,
+  zip: '',
 };
 
 let searchDebounce = null;
@@ -1098,6 +1219,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.page = 1;
     loadClinics();
     refreshStats(state.city);
+  });
+
+  let zipDebounce = null;
+  document.getElementById('filter-zip').addEventListener('input', e => {
+    clearTimeout(zipDebounce);
+    zipDebounce = setTimeout(() => {
+      state.zip = e.target.value.trim();
+      state.page = 1;
+      loadClinics();
+    }, 350);
   });
 
   refreshStats('');
@@ -1139,6 +1270,7 @@ function buildParams(overrides = {}) {
   if (s.city)            p.set('city', s.city);
   if (s.cashPay)         p.set('cash_pay', '1');
   if (s.hideUnverified)  p.set('hide_unverified', '1');
+  if (s.zip)             p.set('zip', s.zip);
   s.specialties.forEach(sp => p.append('specialty', sp));
   if (s.search)          p.set('search', s.search);
   return p;
@@ -1181,7 +1313,11 @@ async function loadClinics() {
     const resp = await fetch('/api/clinics?' + params.toString());
     const data = await resp.json();
     state.total = data.total;
-    renderCards(grid, data.clinics);
+    if (state.layout === 'table') {
+      renderTable(grid, data.clinics);
+    } else {
+      renderCards(grid, data.clinics);
+    }
     renderPagination();
     renderResultsLabel();
   } catch (e) {
@@ -1191,6 +1327,20 @@ async function loadClinics() {
       <p class="empty-sub">Please refresh the page or contact support.</p>
     </div>`;
   }
+}
+
+function setLayout(layout) {
+  state.layout = layout;
+  document.getElementById('layout-grid').classList.toggle('active', layout === 'grid');
+  document.getElementById('layout-table').classList.toggle('active', layout === 'table');
+  // Swap grid CSS class so table stretches full width
+  const container = document.getElementById('clinic-grid');
+  if (layout === 'table') {
+    container.style.display = 'block';
+  } else {
+    container.style.display = '';
+  }
+  loadClinics();
 }
 
 /* ── Render ───────────────────────────────────────────── */
@@ -1274,6 +1424,70 @@ function renderCards(grid, clinics) {
       </div>
     </div>`;
   }).join('');
+}
+
+function renderTable(container, clinics) {
+  if (!clinics.length) {
+    container.style.display = '';
+    container.innerHTML = `<div class="empty-state">
+      <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+      <p class="empty-title">No clinics match your filters</p>
+      <p class="empty-sub">Try broadening your search or adjusting the filters.</p>
+    </div>`;
+    return;
+  }
+
+  const rows = clinics.map(c => {
+    const saved   = state.shortlistIds.has(c.id);
+    const cashPay = !!c.cash_pay_signal;
+    const specs   = [
+      c.specialty_sports ? `<span class="tag tag-sports" style="font-size:0.65rem;padding:2px 7px">Sports</span>` : '',
+      c.specialty_ortho  ? `<span class="tag tag-ortho"  style="font-size:0.65rem;padding:2px 7px">Ortho</span>`  : '',
+      c.specialty_pelvic ? `<span class="tag tag-pelvic" style="font-size:0.65rem;padding:2px 7px">Pelvic</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    const staffCell = (c.staff_count !== null && c.staff_count !== undefined)
+      ? (c.staff_count > 0 ? c.staff_count : '—')
+      : '';
+
+    const webCell = c.website
+      ? `<a href="${esc(c.website)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(trimUrl(c.website))}</a>`
+      : '—';
+
+    const bmkStar = saved
+      ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
+      : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+
+    return `<tr class="${cashPay ? 'cash-pay-row' : ''}" onclick="openDetail(${c.id})">
+      <td class="td-name">${esc(c.name)}</td>
+      <td class="td-location">${esc(c.city || '')}${c.state ? ', ' + esc(c.state) : ''}</td>
+      <td>${esc(c.zip_code || '')}</td>
+      <td>${specs || '—'}</td>
+      <td>${cashPay ? '<span class="tbl-cash-badge">Cash-Pay</span>' : '—'}</td>
+      <td style="text-align:center">${staffCell}</td>
+      <td>${webCell}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="tbl-bm-btn ${saved ? 'saved' : ''}" title="${saved ? 'Remove from shortlist' : 'Save to shortlist'}"
+          data-shortlist-id="${c.id}" onclick="toggleShortlist(${c.id})">${bmkStar}</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `<table class="clinic-table">
+    <thead>
+      <tr>
+        <th>Clinic / Practitioner</th>
+        <th>City</th>
+        <th>ZIP</th>
+        <th>Specialty</th>
+        <th>Cash-Pay</th>
+        <th style="text-align:center">Staff</th>
+        <th>Website</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function renderResultsLabel() {
@@ -1590,11 +1804,14 @@ async function loadShortlist() {
     state.total = data.clinics.length;
     renderResultsLabel();
     if (!data.clinics.length) {
+      grid.style.display = '';
       grid.innerHTML = `<div class="empty-state">
         <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
         <p class="empty-title">Your shortlist is empty</p>
         <p class="empty-sub">Click "Save" on any clinic card to add it here.</p>
       </div>`;
+    } else if (state.layout === 'table') {
+      renderTable(grid, data.clinics);
     } else {
       renderCards(grid, data.clinics);
     }

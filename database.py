@@ -163,6 +163,7 @@ def query_clinics(
     specialty: list = None,
     cash_pay_only: bool = False,
     hide_unverified: bool = False,
+    zip_code: str = None,
     search: str = None,
     limit: int = 500,
     offset: int = 0,
@@ -179,6 +180,9 @@ def query_clinics(
         conditions.append("cash_pay_signal = 1")
     if hide_unverified:
         conditions.append("NOT (source = 'npi_registry' AND (website IS NULL OR website = ''))")
+    if zip_code:
+        conditions.append("zip_code LIKE ?")
+        params.append(zip_code + "%")
     if specialty:
         spec_clauses = []
         for s in specialty:
@@ -212,6 +216,7 @@ def count_clinics(
     specialty: list = None,
     cash_pay_only: bool = False,
     hide_unverified: bool = False,
+    zip_code: str = None,
     search: str = None,
     db_path: str = DB_PATH,
 ) -> int:
@@ -225,6 +230,9 @@ def count_clinics(
         conditions.append("cash_pay_signal = 1")
     if hide_unverified:
         conditions.append("NOT (source = 'npi_registry' AND (website IS NULL OR website = ''))")
+    if zip_code:
+        conditions.append("zip_code LIKE ?")
+        params.append(zip_code + "%")
     if specialty:
         spec_clauses = []
         for s in specialty:
