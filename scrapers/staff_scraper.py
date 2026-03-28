@@ -31,17 +31,27 @@ _TEAM_TEXT_RE = re.compile(
     re.I,
 )
 
-# Credentials stripped before testing whether a heading is a person's name
+# Credentials stripped before testing whether a heading is a person's name.
+# NOTE: case-sensitive — credentials are written uppercase; using re.I would
+# cause "Ma" in "Major" or "Ms" in "Miss" to be consumed as a credential.
 _CREDENTIALS_RE = re.compile(
     r",?\s*\b("
     r"DPT|PT|MPT|OCS|CSCS|FAAOMPT|ATC|SCS|COMT|PhD|ScD|EdD|MS|MA|BS|BA|MSPT|"
+    r"OTR|CHT|PTA|COTA|"
     r"Cert\.?\s*MDT|PCS|NCS|GCS|CWS|CLT|CEES|ASTYM|LSVT|CAFS|PRPC|WCS"
     r")[\w\s,\.]*",
-    re.I,
 )
 _TITLE_PREFIX_RE = re.compile(r"^(Dr\.?|Mr\.?|Ms\.?|Mrs\.?|Prof\.?)\s+", re.I)
 
-# Section-level headings that are titles, not names
+# Detects a credential suffix in the original text (positive signal — not for stripping)
+_HAS_CREDENTIAL_RE = re.compile(
+    r"\b(DPT|MPT|MSPT|OCS|CSCS|FAAOMPT|ATC|SCS|COMT|OTR|CHT|PTA|COTA|"
+    r"PhD|ScD|EdD|PRPC|WCS|CLT|LSVT|ASTYM|CAFS)\b"
+    r"|(?<!\w)PT(?!\w)",  # PT as a standalone token
+    re.I,
+)
+
+# Section-level headings that are titles, not names (exact full-text match)
 _GENERIC_HEADINGS = {
     "meet our team", "our team", "our staff", "our therapists",
     "meet the team", "our providers", "clinical staff", "meet our providers",
@@ -52,6 +62,80 @@ _GENERIC_HEADINGS = {
     "about our team", "meet the staff", "our specialists",
 }
 
+# Words that appear in navigation/content headings but never in human names.
+# Any entry whose cleaned text contains one of these words is rejected.
+_GENERIC_WORDS = frozenset({
+    # Articles, pronouns, conjunctions — appear in headings, never in names
+    "the", "our", "your", "my", "we", "us", "you", "they", "them", "their",
+    "all", "and", "or", "but", "in", "on", "at", "to", "for", "of", "by",
+    "this", "that", "these", "those", "it", "its", "an", "a",
+    # Common heading verbs
+    "do", "get", "find", "learn", "see", "start", "join", "call", "ask",
+    "visit", "meet", "know", "try", "make", "feel", "choose", "prevent",
+    "improve", "help", "explore", "discover", "understand", "achieve",
+    # Common adjectives in content headings
+    "better", "faster", "first", "new", "more", "less", "best", "great",
+    "different", "special", "free", "easy", "simple", "full", "next",
+    # Common content nouns (non-name)
+    "practice", "process", "approach", "values", "mission", "vision",
+    "goal", "goals", "benefit", "benefits", "result", "results",
+    "story", "stories", "success", "difference", "experience", "why", "how", "what",
+    # Body parts and condition terms
+    "pain", "neck", "back", "shoulder", "knee", "hip", "ankle", "wrist",
+    "elbow", "motor", "vehicle", "accident", "injury", "injuries",
+    "condition", "conditions", "syndrome", "chronic", "acute",
+    # Event / workshop terms
+    "workshop", "workshops", "seminar", "seminars", "webinar", "webinars",
+    "event", "events", "engagement", "engagements", "conference",
+    "scholars", "prizes", "awards",
+    # Research / academic terms
+    "trial", "trials", "platform", "innovation", "research", "study",
+    "studies", "initiative", "als", "continuing", "education", "courses",
+    "collaborators", "researcher", "visiting", "inside",
+    # Technique / service terms
+    "technique", "techniques", "method", "methods", "exercise", "exercises",
+    "equipment", "evaluation", "evaluations", "assessment", "assessments",
+    "release", "active", "graston", "empowering", "personalized",
+    "attention", "movement", "comprehensive", "referral", "referrals",
+    # Navigation / link items
+    "links", "access", "handbook", "opportunities", "employment",
+    "advisory", "newsletter", "systems", "finance", "business", "employee",
+    "departments", "clinical", "helpful",
+    # Condition / specialty terms
+    "cancer", "recovery", "prevention", "acl", "dance",
+    "plantar", "fasciitis", "headaches", "cervicogenic",
+    # Compass directions (location identifiers, not surnames)
+    "east", "west", "north", "south", "island",
+    # Quality / ratings language
+    "overall", "quality", "rating", "recommend", "functional", "retraining",
+    "would",
+    # Misc non-name terms seen in scrape output
+    "station", "open", "position", "brand", "guidelines", "reserve",
+    "helps", "with", "travelers", "international",
+    "extensive", "specialized", "knowledge", "walk", "most", "managed",
+    "frequently", "privacy", "follow", "accepting", "major",
+    "premier", "performance", "peoplefit",
+    "send", "message", "up", "in", "out", "visits", "visit",
+    # Original list
+    "hours", "address", "location", "locations", "contact", "office",
+    "services", "service", "schedule", "appointment", "appointments",
+    "directions", "about", "staff", "team", "physical", "therapy",
+    "therapist", "therapists", "center", "clinic", "health", "care",
+    "medical", "rehabilitation", "rehab", "patient", "patients",
+    "information", "phone", "fax", "email", "website", "menu",
+    "search", "home", "specialties", "specialty", "treatment", "treatments",
+    "welcome", "insurance", "billing", "payment", "suite", "floor",
+    "building", "support", "resources", "blog", "news", "gallery",
+    "reviews", "testimonials", "map", "parking", "navigation",
+    "donate", "donor", "blood", "healthy", "living", "wellness",
+    "community", "program", "programs", "class", "classes", "group",
+    "hospital", "foundation", "institute", "network", "associates",
+    "association", "partners", "partner", "university", "college",
+    "surgery", "surgical", "orthopedic", "orthopaedic", "sports",
+    "pelvic", "pediatric", "geriatric", "neurology", "cardiology",
+    "diagnostic", "imaging", "laboratory", "pharmacy",
+})
+
 # Class/id fragments that suggest a team container
 _TEAM_CONTAINER_KW = (
     "team", "staff", "therapist", "provider", "clinician",
@@ -60,21 +144,62 @@ _TEAM_CONTAINER_KW = (
 
 
 def _looks_like_name(text: str) -> bool:
-    """Return True if text plausibly represents a person's name."""
+    """
+    Return True if text plausibly represents a human staff member's name.
+
+    A valid entry must:
+    - Not be a known generic section heading
+    - Contain no generic non-name words (hours, address, services, etc.)
+    - Have 2–5 words after credential stripping, each starting uppercase
+    - Each word must be name-safe characters: letters, apostrophes, hyphens,
+      optional trailing period (for middle initials like "K.")
+    - Either carry a credential suffix (PT, DPT, MPT, OTR, CHT, …)
+      OR consist of at most 3 words (first + optional middle + last)
+    """
     text = text.strip()
     if not text or text.lower() in _GENERIC_HEADINGS:
         return False
-    text = _CREDENTIALS_RE.sub("", text)
-    text = _TITLE_PREFIX_RE.sub("", text)
-    text = text.strip().rstrip(",").strip()
-    words = text.split()
+    # Reject strings that are too long to be a single name (concatenated blobs)
+    if len(text) > 80:
+        return False
+
+    # Check for credential in original text before stripping
+    has_credential = bool(_HAS_CREDENTIAL_RE.search(text))
+
+    cleaned = _CREDENTIALS_RE.sub("", text)
+    cleaned = _TITLE_PREFIX_RE.sub("", cleaned)
+    cleaned = cleaned.strip().rstrip(",").strip()
+
+    words = cleaned.split()
     if not 2 <= len(words) <= 5:
         return False
+
     for word in words:
-        # Allow hyphenated and apostrophe names (O'Brien, Smith-Jones)
+        # Reject if any word is a known non-name generic term
+        if word.lower() in _GENERIC_WORDS:
+            return False
+        # Each word must start with uppercase
         core = re.sub(r"^[-']|[-']$", "", word)
         if not core or not core[0].isupper():
             return False
+        # Name-safe character check: letters, apostrophes, hyphens,
+        # optional single trailing period (middle initial "K.")
+        if not re.match(r"^[A-Z][a-zA-Z\'\-]*\.?$", word):
+            return False
+        # Hyphenated words: every hyphen-separated part must start uppercase
+        # AND must not be a generic word (rejects "State-of-the", "Walk-In", etc.)
+        if "-" in word:
+            parts = word.rstrip(".").split("-")
+            if not all(p and p[0].isupper() for p in parts if p):
+                return False
+            if any(p.lower() in _GENERIC_WORDS for p in parts if p):
+                return False
+
+    # Without a credential, tighten to 2–3 words (first [middle] last)
+    # to reduce false positives from content headings
+    if not has_credential and len(words) > 3:
+        return False
+
     return True
 
 
