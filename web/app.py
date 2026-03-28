@@ -95,9 +95,12 @@ def api_clinics():
     city = request.args.get("city", "")
     cash_pay = request.args.get("cash_pay", "") == "1"
     hide_unverified = request.args.get("hide_unverified", "") == "1"
+    hide_practitioners = request.args.get("hide_practitioners", "") == "1"
     zip_code = request.args.get("zip", "").strip()
     specialties = request.args.getlist("specialty")
     search = request.args.get("search", "")
+    min_staff = int(request.args.get("min_staff", 0) or 0)
+    min_locations = int(request.args.get("min_locations", 0) or 0)
     page = max(1, int(request.args.get("page", 1)))
     per_page = min(100, int(request.args.get("per_page", 50)))
     offset = (page - 1) * per_page
@@ -107,8 +110,11 @@ def api_clinics():
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        hide_practitioners=hide_practitioners,
         zip_code=zip_code or None,
         search=search or None,
+        min_staff=min_staff or None,
+        min_locations=min_locations or None,
         limit=per_page,
         offset=offset,
     )
@@ -117,8 +123,11 @@ def api_clinics():
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        hide_practitioners=hide_practitioners,
         zip_code=zip_code or None,
         search=search or None,
+        min_staff=min_staff or None,
+        min_locations=min_locations or None,
     )
 
     # Parse cash_pay_keywords JSON for display and drop heavy website_text
@@ -152,17 +161,23 @@ def export_csv():
     city = request.args.get("city", "")
     cash_pay = request.args.get("cash_pay", "") == "1"
     hide_unverified = request.args.get("hide_unverified", "") == "1"
+    hide_practitioners = request.args.get("hide_practitioners", "") == "1"
     zip_code = request.args.get("zip", "").strip()
     specialties = request.args.getlist("specialty")
     search = request.args.get("search", "")
+    min_staff = int(request.args.get("min_staff", 0) or 0)
+    min_locations = int(request.args.get("min_locations", 0) or 0)
 
     clinics = query_clinics(
         city=city or None,
         specialty=specialties or None,
         cash_pay_only=cash_pay,
         hide_unverified=hide_unverified,
+        hide_practitioners=hide_practitioners,
         zip_code=zip_code or None,
         search=search or None,
+        min_staff=min_staff or None,
+        min_locations=min_locations or None,
         limit=10_000,
         offset=0,
     )
@@ -271,7 +286,14 @@ def api_scrape_status():
 @app.route("/api/clinics/<int:clinic_id>")
 def api_clinic_detail(clinic_id):
     conn = get_conn()
-    row = conn.execute("SELECT * FROM clinics WHERE id = ?", (clinic_id,)).fetchone()
+    row = conn.execute("""
+        SELECT *,
+          CASE WHEN (website_domain IS NOT NULL AND website_domain != '')
+            THEN (SELECT COUNT(*) FROM clinics c2 WHERE c2.website_domain = clinics.website_domain)
+            ELSE 1
+          END AS location_count
+        FROM clinics WHERE id = ?
+    """, (clinic_id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({"error": "Not found"}), 404

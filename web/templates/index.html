@@ -552,6 +552,49 @@
       flex-shrink: 0;
     }
 
+    .card-badges {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .chain-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      background: #EAF0F8;
+      color: #2C4A7A;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 99px;
+      border: 1px solid rgba(44,74,122,0.2);
+    }
+
+    .practitioner-badge {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      background: #F5F5F0;
+      color: var(--ink-light);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+    }
+
+    .clinic-card.is-practitioner {
+      opacity: 0.82;
+    }
+
     .card-meta {
       display: flex;
       flex-direction: column;
@@ -1155,6 +1198,39 @@
              placeholder="e.g. 02109" autocomplete="off"
              style="width:100px;min-width:0;flex:none"/>
 
+      <div class="filter-divider"></div>
+
+      <!-- Min staff filter -->
+      <span class="filter-label">Staff</span>
+      <select class="filter-select" id="filter-min-staff" style="width:90px">
+        <option value="0">Any</option>
+        <option value="3">3+</option>
+        <option value="5">5+</option>
+        <option value="10">10+</option>
+        <option value="20">20+</option>
+      </select>
+
+      <div class="filter-divider"></div>
+
+      <!-- Min locations filter -->
+      <span class="filter-label">Locations</span>
+      <select class="filter-select" id="filter-min-locations" style="width:90px">
+        <option value="0">Any</option>
+        <option value="2">Chain (2+)</option>
+        <option value="3">3+</option>
+        <option value="5">5+</option>
+      </select>
+
+      <div class="filter-divider"></div>
+
+      <!-- Hide practitioners toggle -->
+      <label class="toggle-wrap" onclick="toggleHidePractitioners()">
+        <div class="toggle-track" id="toggle-practitioners">
+          <div class="toggle-thumb"></div>
+        </div>
+        <span class="toggle-label">Clinics Only</span>
+      </label>
+
     </div>
   </div>
 
@@ -1212,7 +1288,10 @@ const state = {
   layout: 'grid',        // 'grid' | 'table'
   shortlistIds: new Set(),
   hideUnverified: false,
+  hidePractitioners: false,
   zip: '',
+  minStaff: 0,
+  minLocations: 0,
 };
 
 let searchDebounce = null;
@@ -1243,6 +1322,18 @@ document.addEventListener('DOMContentLoaded', () => {
       state.page = 1;
       loadClinics();
     }, 350);
+  });
+
+  document.getElementById('filter-min-staff').addEventListener('change', e => {
+    state.minStaff = parseInt(e.target.value) || 0;
+    state.page = 1;
+    loadClinics();
+  });
+
+  document.getElementById('filter-min-locations').addEventListener('change', e => {
+    state.minLocations = parseInt(e.target.value) || 0;
+    state.page = 1;
+    loadClinics();
   });
 
   refreshStats('');
@@ -1277,16 +1368,26 @@ function toggleHideUnverified() {
   loadClinics();
 }
 
+function toggleHidePractitioners() {
+  state.hidePractitioners = !state.hidePractitioners;
+  document.getElementById('toggle-practitioners').classList.toggle('on', state.hidePractitioners);
+  state.page = 1;
+  loadClinics();
+}
+
 /* ── API ──────────────────────────────────────────────── */
 function buildParams(overrides = {}) {
   const p = new URLSearchParams();
   const s = { ...state, ...overrides };
-  if (s.city)            p.set('city', s.city);
-  if (s.cashPay)         p.set('cash_pay', '1');
-  if (s.hideUnverified)  p.set('hide_unverified', '1');
-  if (s.zip)             p.set('zip', s.zip);
+  if (s.city)                  p.set('city', s.city);
+  if (s.cashPay)               p.set('cash_pay', '1');
+  if (s.hideUnverified)        p.set('hide_unverified', '1');
+  if (s.hidePractitioners)     p.set('hide_practitioners', '1');
+  if (s.zip)                   p.set('zip', s.zip);
   s.specialties.forEach(sp => p.append('specialty', sp));
-  if (s.search)          p.set('search', s.search);
+  if (s.search)                p.set('search', s.search);
+  if (s.minStaff > 0)          p.set('min_staff', s.minStaff);
+  if (s.minLocations > 1)      p.set('min_locations', s.minLocations);
   return p;
 }
 
@@ -1417,10 +1518,24 @@ function renderCards(grid, clinics) {
       ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
       : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
 
-    return `<div class="clinic-card${cashPay ? ' cash-pay' : ''}" onclick="openDetail(${c.id})">
+    const isPractitioner = !!c.is_practitioner;
+    const locationCount = c.location_count || 1;
+    const isChain = locationCount >= 2;
+    const chainBadge = isChain
+      ? `<span class="chain-badge" title="${locationCount} locations share this website">${locationCount} locations</span>`
+      : '';
+    const practitionerBadge = isPractitioner
+      ? `<span class="practitioner-badge">Individual PT</span>`
+      : '';
+
+    return `<div class="clinic-card${cashPay ? ' cash-pay' : ''}${isPractitioner ? ' is-practitioner' : ''}" onclick="openDetail(${c.id})">
       <div class="card-header">
         <h3 class="card-name">${esc(c.name)}</h3>
-        ${cashPay ? '<span class="cash-badge">Cash-Pay Signal</span>' : ''}
+        <div class="card-badges">
+          ${cashPay ? '<span class="cash-badge">Cash-Pay Signal</span>' : ''}
+          ${chainBadge}
+          ${practitionerBadge}
+        </div>
       </div>
       <div class="card-meta">
         ${addressRow}
@@ -1613,8 +1728,11 @@ function renderDetail(panel, c) {
   const saved = state.shortlistIds.has(c.id);
 
   // Badges row
+  const locationCount = c.location_count || 1;
   const badges = [
     cashPay ? `<span class="cash-badge" style="position:static">Cash-Pay Signal</span>` : '',
+    locationCount >= 2 ? `<span class="chain-badge">${locationCount} locations</span>` : '',
+    c.is_practitioner ? `<span class="practitioner-badge">Individual PT</span>` : '',
     c.specialty_sports ? `<span class="tag tag-sports">Sports</span>` : '',
     c.specialty_ortho  ? `<span class="tag tag-ortho">Orthopedic</span>` : '',
     c.specialty_pelvic ? `<span class="tag tag-pelvic">Pelvic Health</span>` : '',
