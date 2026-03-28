@@ -108,8 +108,14 @@ async def _scrape_place_page(context, url: str) -> Optional[dict]:
         except Exception:
             pass
 
+        # Strip Google Maps link-text artifact: "Visit Foo Bar's website"
+        name = name.strip()
+        _visit_match = re.match(r"^Visit (.+?)'s website$", name, re.I)
+        if _visit_match:
+            name = _visit_match.group(1).strip()
+
         return {
-            "name": name.strip(),
+            "name": name,
             "address": address,
             "phone": phone,
             "website": website,

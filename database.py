@@ -112,6 +112,27 @@ def init_db(db_path: str = DB_PATH):
         domain = _normalize_domain(row["website"])
         conn.execute("UPDATE clinics SET website_domain = ? WHERE id = ?", (domain, row["id"]))
 
+    # Clean up "Visit Foo's website" names captured from Google Maps link text
+    rows = conn.execute(
+        "SELECT id, name, address FROM clinics WHERE name LIKE 'Visit %' AND name LIKE '%website%'"
+    ).fetchall()
+    _visit_re = re.compile(r"^Visit (.+?)'s website$", re.I)
+    for row in rows:
+        m = _visit_re.match(row["name"])
+        if not m:
+            continue
+        real_name = m.group(1).strip()
+        # Check if a record with the real name already exists at this address
+        conflict = conn.execute(
+            "SELECT id FROM clinics WHERE name = ? AND address = ? AND id != ?",
+            (real_name, row["address"], row["id"]),
+        ).fetchone()
+        if conflict:
+            # Duplicate — remove the mangled record
+            conn.execute("DELETE FROM clinics WHERE id = ?", (row["id"],))
+        else:
+            conn.execute("UPDATE clinics SET name = ? WHERE id = ?", (real_name, row["id"]))
+
     # Populate is_practitioner for all rows (re-evaluate on every startup to catch new records)
     rows = conn.execute("SELECT id, name FROM clinics").fetchall()
     for row in rows:

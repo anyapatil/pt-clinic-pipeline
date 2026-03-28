@@ -116,6 +116,15 @@ _GENERIC_WORDS = frozenset({
     "frequently", "privacy", "follow", "accepting", "major",
     "premier", "performance", "peoplefit",
     "send", "message", "up", "in", "out", "visits", "visit",
+    # Additional false positives
+    "certified", "specialists", "residency", "trained", "lymphatic",
+    "drainage", "athletic", "training", "sitemap", "wharf",
+    "registration", "forms", "brazilian", "integrated", "advanced",
+    "licensed", "registered", "board", "fellowship",
+    "manual", "therapy", "therapies", "modalities",
+    "sauna", "infrared", "isokinetic", "pilates", "nurse",
+    "practitioner", "executive", "interactive", "testing",
+    "transparent", "rates", "technology", "light",
     # Original list
     "hours", "address", "location", "locations", "contact", "office",
     "services", "service", "schedule", "appointment", "appointments",
@@ -171,12 +180,22 @@ def _looks_like_name(text: str) -> bool:
     cleaned = cleaned.strip().rstrip(",").strip()
 
     words = cleaned.split()
-    if not 2 <= len(words) <= 5:
+    # Strict: allow only 2 or 3 words
+    if not 2 <= len(words) <= 3:
         return False
 
     for word in words:
         # Reject if any word is a known non-name generic term
         if word.lower() in _GENERIC_WORDS:
+            return False
+        # Reject ALL-CAPS words longer than 4 chars — these are acronyms/labels,
+        # not surname components (e.g. "TESTING", "HUMAC", "INfrared" → mixed caps)
+        core_stripped = word.rstrip(".")
+        if len(core_stripped) > 4 and core_stripped.isupper():
+            return False
+        # Reject mixed-caps words like "INfrared", "REd" — interior uppercase chars
+        # A valid name word has at most one leading uppercase letter
+        if re.search(r"[a-z][A-Z]", word):
             return False
         # Each word must start with uppercase
         core = re.sub(r"^[-']|[-']$", "", word)
@@ -195,9 +214,8 @@ def _looks_like_name(text: str) -> bool:
             if any(p.lower() in _GENERIC_WORDS for p in parts if p):
                 return False
 
-    # Without a credential, tighten to 2–3 words (first [middle] last)
-    # to reduce false positives from content headings
-    if not has_credential and len(words) > 3:
+    # 3-word entries require a credential (reduces "Brazilian Lymphatic Drainage" etc.)
+    if len(words) == 3 and not has_credential:
         return False
 
     return True
