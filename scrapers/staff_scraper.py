@@ -45,7 +45,7 @@ _TITLE_PREFIX_RE = re.compile(r"^(Dr\.?|Mr\.?|Ms\.?|Mrs\.?|Prof\.?)\s+", re.I)
 
 # Detects a credential suffix in the original text (positive signal — not for stripping)
 _HAS_CREDENTIAL_RE = re.compile(
-    r"\b(DPT|MPT|MSPT|OCS|CSCS|FAAOMPT|ATC|SCS|COMT|OTR|CHT|PTA|COTA|"
+    r"\b(DPT|MPT|MSPT|OCS|CSCS|FAAOMPT|ATC|SCS|COMT|OTR|CHT|PTA|COTA|LMT|"
     r"PhD|ScD|EdD|PRPC|WCS|CLT|LSVT|ASTYM|CAFS)\b"
     r"|(?<!\w)PT(?!\w)",  # PT as a standalone token
     re.I,
@@ -247,6 +247,28 @@ def _find_team_links(html: str, base_url: str) -> list[str]:
     return links
 
 
+def _has_credential_nearby(tag) -> bool:
+    """
+    Return True if a PT credential appears in `tag` itself OR in any sibling
+    element within the same parent container.
+
+    This enforces: only record a name when a qualifying credential
+    (PT, DPT, MPT, OTR, CHT, PTA, LMT, …) is co-located on the page,
+    eliminating content headings that happen to look like names.
+    """
+    if _HAS_CREDENTIAL_RE.search(tag.get_text(" ", strip=True)):
+        return True
+    parent = tag.parent
+    if parent is None:
+        return False
+    for sibling in parent.children:
+        if sibling is tag or not hasattr(sibling, "get_text"):
+            continue
+        if _HAS_CREDENTIAL_RE.search(sibling.get_text(" ", strip=True)):
+            return True
+    return False
+
+
 def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
     """
     Count probable staff members on a page using two independent strategies.
@@ -279,7 +301,11 @@ def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
     seen_lower: set[str] = set()
     for tag in bs.find_all(["h2", "h3", "h4", "h5"]):
         text = tag.get_text(" ", strip=True)
-        if _looks_like_name(text) and text.lower() not in seen_lower:
+        if (
+            _looks_like_name(text)
+            and _has_credential_nearby(tag)
+            and text.lower() not in seen_lower
+        ):
             seen_lower.add(text.lower())
             name_headings.append(text)
     if len(name_headings) >= 2:
@@ -292,7 +318,11 @@ def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
         scoped_lower: set[str] = set()
         for tag in container.find_all(["h2", "h3", "h4", "h5", "strong"]):
             text = tag.get_text(" ", strip=True)
-            if _looks_like_name(text) and text.lower() not in scoped_lower:
+            if (
+                _looks_like_name(text)
+                and _has_credential_nearby(tag)
+                and text.lower() not in scoped_lower
+            ):
                 scoped_lower.add(text.lower())
                 scoped.append(text)
         if scoped:
