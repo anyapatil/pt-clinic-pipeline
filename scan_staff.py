@@ -91,11 +91,15 @@ def main():
         logger.info(f"[{i}/{len(targets)}] {clinic['name']} ({clinic['city']})")
         logger.info(f"  URL: {clinic['website']}")
 
-        count, names = scrape_staff_count(clinic["website"])
-        logger.info(f"  → staff_count = {count}  names = {names[:3]}{'…' if len(names) > 3 else ''}")
+        count, names, primary_name, primary_email, primary_linkedin = scrape_staff_count(clinic["website"])
+        logger.info(
+            f"  → staff_count = {count}  primary = {primary_name!r}  "
+            f"email = {primary_email!r}  linkedin = {primary_linkedin!r}  "
+            f"names = {names[:3]}{'…' if len(names) > 3 else ''}"
+        )
 
         if count is not None:
-            update_staff_count(clinic["id"], count, names)
+            update_staff_count(clinic["id"], count, names, primary_name, primary_email, primary_linkedin)
             scanned += 1
 
         if i < len(targets):

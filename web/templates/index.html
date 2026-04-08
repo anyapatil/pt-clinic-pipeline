@@ -1763,27 +1763,47 @@ function renderDetail(panel, c) {
         <a href="${esc(c.source_url)}" target="_blank" rel="noopener">${esc(sourceLabel)} listing</a>
        </div>` : '';
 
-  // Staff section
+  // Staff section — shows primary staff member only
   let staffHtml;
   if (c.staff_count === null || c.staff_count === undefined) {
-    if (c.website) {
-      staffHtml = `<p class="modal-staff-pending">Scan pending.</p>`;
-    } else {
-      staffHtml = `<p class="modal-staff-pending">No website on file.</p>`;
-    }
-  } else if (c.staff_count === 0) {
-    staffHtml = `<p class="modal-staff-pending">Staff page not detected on website.</p>`;
-  } else {
-    let names = [];
-    try { names = JSON.parse(c.staff_names || '[]'); } catch(e) {}
-    const namesHtml = names.length
-      ? `<div class="modal-staff-names">${names.map(n => `<span class="modal-staff-name">${esc(n)}</span>`).join('')}</div>`
-      : '';
+    staffHtml = c.website
+      ? `<p class="modal-staff-pending">Scan pending.</p>`
+      : `<p class="modal-staff-pending">No website on file.</p>`;
+  } else if (c.primary_staff_name) {
+    staffHtml = `
+      <div class="modal-staff-value" style="font-size:1.1rem">${esc(c.primary_staff_name)}</div>
+      <div class="modal-staff-label">${c.staff_count} staff listed on website</div>`;
+  } else if (c.staff_count > 0) {
     staffHtml = `
       <div class="modal-staff-value">${c.staff_count}</div>
-      <div class="modal-staff-label">staff listed on website</div>
-      ${namesHtml}`;
+      <div class="modal-staff-label">staff listed on website</div>`;
+  } else {
+    staffHtml = `<p class="modal-staff-pending">Staff page not detected on website.</p>`;
   }
+
+  // Primary Contact section
+  const primaryContactSection = `
+    <div class="modal-section">
+      <p class="modal-section-label">Primary Contact</p>
+      <div class="modal-info-rows">
+        ${c.primary_staff_name ? `<div class="modal-row">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>${esc(c.primary_staff_name)}</span>
+         </div>` : ''}
+        <div class="modal-row">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          ${c.primary_staff_email
+            ? `<a href="mailto:${esc(c.primary_staff_email)}">${esc(c.primary_staff_email)}</a>`
+            : `<span style="color:var(--ink-light);font-style:italic">No contact email found</span>`}
+        </div>
+        <div class="modal-row">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+          ${c.primary_staff_linkedin
+            ? `<a href="${esc(c.primary_staff_linkedin)}" target="_blank" rel="noopener">${esc(c.primary_staff_linkedin)}</a>`
+            : `<span style="color:var(--ink-light);font-style:italic">No LinkedIn found</span>`}
+        </div>
+      </div>
+    </div>`;
 
   // Keywords section
   const kwSection = kws.length ? `
@@ -1835,6 +1855,8 @@ function renderDetail(panel, c) {
         <p class="modal-section-label">Staff Listed on Website</p>
         ${staffHtml}
       </div>
+
+      ${primaryContactSection}
 
       ${kwSection}
       ${listingSection}

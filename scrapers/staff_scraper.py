@@ -51,6 +51,19 @@ _HAS_CREDENTIAL_RE = re.compile(
     re.I,
 )
 
+# PT-specific credentials only — used to identify the primary staff member
+_PT_CRED_RE = re.compile(
+    r"\b(DPT|MPT|MSPT|OTR|CHT|PTA|LMT)\b"
+    r"|(?<!\w)PT(?!\w)",
+    re.I,
+)
+
+# Email address pattern
+_EMAIL_RE = re.compile(r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
+
+# LinkedIn personal profile URL pattern (linkedin.com/in/username)
+_LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/in/[\w\-]+", re.I)
+
 # Section-level headings that are titles, not names (exact full-text match)
 _GENERIC_HEADINGS = {
     "meet our team", "our team", "our staff", "our therapists",
@@ -221,6 +234,35 @@ def _looks_like_name(text: str) -> bool:
     return True
 
 
+def _extract_linkedin(html: str) -> str | None:
+    """Return the first linkedin.com/in/ profile URL found in the page."""
+    bs = BeautifulSoup(html, "lxml")
+    for a in bs.find_all("a", href=True):
+        m = _LINKEDIN_RE.match(a["href"].strip())
+        if m:
+            return m.group(0).rstrip("/")
+    # Fall back to regex on raw HTML (handles JS-rendered or text mentions)
+    m = _LINKEDIN_RE.search(html)
+    return m.group(0).rstrip("/") if m else None
+
+
+def _extract_email(html: str) -> str | None:
+    """
+    Return the first publicly visible email address found in html.
+    Prefers explicit mailto: href links; falls back to regex on page text.
+    """
+    bs = BeautifulSoup(html, "lxml")
+    for a in bs.find_all("a", href=True):
+        href = a["href"].strip()
+        if href.lower().startswith("mailto:"):
+            email = href[7:].split("?")[0].strip()
+            if _EMAIL_RE.match(email):
+                return email
+    text = bs.get_text(" ", strip=True)
+    m = _EMAIL_RE.search(text)
+    return m.group(0) if m else None
+
+
 def _find_team_links(html: str, base_url: str) -> list[str]:
     """Return up to 3 internal links that likely lead to a team/staff page."""
     bs = BeautifulSoup(html, "lxml")
@@ -269,16 +311,34 @@ def _has_credential_nearby(tag) -> bool:
     return False
 
 
-def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
+def _has_pt_credential_nearby(tag) -> bool:
+    """Like _has_credential_nearby but restricted to PT-specific credentials."""
+    if _PT_CRED_RE.search(tag.get_text(" ", strip=True)):
+        return True
+    parent = tag.parent
+    if parent is None:
+        return False
+    for sibling in parent.children:
+        if sibling is tag or not hasattr(sibling, "get_text"):
+            continue
+        if _PT_CRED_RE.search(sibling.get_text(" ", strip=True)):
+            return True
+    return False
+
+
+def _count_staff_in_html(html: str) -> tuple[int, list[str], str | None]:
     """
     Count probable staff members on a page using two independent strategies.
-    Returns (count, names) where count is the highest plausible result and
-    names is the list of detected name strings (may be empty if only card
-    counting succeeded).
+    Returns (count, names, primary_staff_name) where:
+      - count is the highest plausible result
+      - names is the list of detected name strings (may be empty if only card counting succeeded)
+      - primary_staff_name is the first name found with a PT-specific credential (PT, DPT, MPT,
+        OTR, CHT, PTA, MSPT, LMT), or None if none found
     """
     bs = BeautifulSoup(html, "lxml")
     counts: list[int] = []
     all_names: list[str] = []
+    first_pt_name: str | None = None
 
     # --- Strategy 1: team container → count card-like direct children ---
     def _is_team_container(tag) -> bool:
@@ -308,6 +368,8 @@ def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
         ):
             seen_lower.add(text.lower())
             name_headings.append(text)
+            if first_pt_name is None and _has_pt_credential_nearby(tag):
+                first_pt_name = text
     if len(name_headings) >= 2:
         counts.append(len(name_headings))
         all_names = name_headings
@@ -325,45 +387,59 @@ def _count_staff_in_html(html: str) -> tuple[int, list[str]]:
             ):
                 scoped_lower.add(text.lower())
                 scoped.append(text)
+                if first_pt_name is None and _has_pt_credential_nearby(tag):
+                    first_pt_name = text
         if scoped:
             counts.append(len(scoped))
             if len(scoped) > len(all_names):
                 all_names = scoped
 
     best = max(counts) if counts else 0
-    return best, all_names
+    return best, all_names, first_pt_name
 
 
-def scrape_staff_count(website_url: str) -> tuple[int | None, list[str]]:
+def scrape_staff_count(website_url: str) -> tuple[int | None, list[str], str | None, str | None, str | None]:
     """
     Fetch a clinic website and estimate the number of PT staff listed.
-    Returns (count, names):
+    Returns (count, names, primary_staff_name, primary_staff_email, primary_staff_linkedin):
       - count: integer (0 = site reachable but no staff found) or None if site unreachable
       - names: list of detected staff name strings (may be empty)
+      - primary_staff_name: first staff name found with a PT credential (PT, DPT, MPT, OTR,
+        CHT, PTA, MSPT, LMT), or None if none found
+      - primary_staff_email: first publicly visible email address found, or None
+      - primary_staff_linkedin: first linkedin.com/in/ profile URL found, or None
     """
     if not website_url:
-        return None, []
+        return None, [], None, None, None
     if not website_url.startswith("http"):
         website_url = "https://" + website_url
 
     try:
         html = fetch_html(website_url)
         if not html:
-            return None, []
+            return None, [], None, None, None
 
-        best, best_names = _count_staff_in_html(html)
+        best, best_names, primary_name = _count_staff_in_html(html)
+        primary_email = _extract_email(html)
+        primary_linkedin = _extract_linkedin(html)
 
         for team_url in _find_team_links(html, website_url):
             polite_sleep()
             page_html = fetch_html(team_url)
             if page_html:
-                count, names = _count_staff_in_html(page_html)
+                count, names, page_primary = _count_staff_in_html(page_html)
                 if count > best:
                     best = count
                     best_names = names
+                if primary_name is None and page_primary:
+                    primary_name = page_primary
+                if primary_email is None:
+                    primary_email = _extract_email(page_html)
+                if primary_linkedin is None:
+                    primary_linkedin = _extract_linkedin(page_html)
 
-        return best, best_names
+        return best, best_names, primary_name, primary_email, primary_linkedin
 
     except Exception as e:
         logger.warning(f"[staff] {website_url}: {e}")
-        return None, []
+        return None, [], None, None, None
