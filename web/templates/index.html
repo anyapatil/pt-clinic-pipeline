@@ -1781,29 +1781,13 @@ function renderDetail(panel, c) {
     staffHtml = `<p class="modal-staff-pending">Staff page not detected on website.</p>`;
   }
 
-  // Primary Contact section
-  const primaryContactSection = `
-    <div class="modal-section">
-      <p class="modal-section-label">Primary Contact</p>
-      <div class="modal-info-rows">
-        ${c.primary_staff_name ? `<div class="modal-row">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span>${esc(c.primary_staff_name)}</span>
-         </div>` : ''}
-        <div class="modal-row">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          ${c.primary_staff_email
-            ? `<a href="mailto:${esc(c.primary_staff_email)}">${esc(c.primary_staff_email)}</a>`
-            : `<span style="color:var(--ink-light);font-style:italic">No contact email found</span>`}
-        </div>
-        <div class="modal-row">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
-          ${c.primary_staff_linkedin
-            ? `<a href="${esc(c.primary_staff_linkedin)}" target="_blank" rel="noopener">${esc(c.primary_staff_linkedin)}</a>`
-            : `<span style="color:var(--ink-light);font-style:italic">No LinkedIn found</span>`}
-        </div>
-      </div>
-    </div>`;
+  // Clinic email row for Contact section
+  const clinicEmailRow = c.clinic_email
+    ? `<div class="modal-row">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <a href="mailto:${esc(c.clinic_email)}">${esc(c.clinic_email)}</a>
+       </div>`
+    : '';
 
   // Keywords section
   const kwSection = kws.length ? `
@@ -1847,7 +1831,7 @@ function renderDetail(panel, c) {
       <div class="modal-section">
         <p class="modal-section-label">Contact</p>
         <div class="modal-info-rows">
-          ${addrRow}${phoneRow}${webRow}${sourceRow}
+          ${addrRow}${phoneRow}${clinicEmailRow}${webRow}${sourceRow}
         </div>
       </div>
 
@@ -1855,8 +1839,6 @@ function renderDetail(panel, c) {
         <p class="modal-section-label">Staff Listed on Website</p>
         ${staffHtml}
       </div>
-
-      ${primaryContactSection}
 
       ${kwSection}
       ${listingSection}

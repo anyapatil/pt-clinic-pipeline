@@ -99,6 +99,7 @@ def init_db(db_path: str = DB_PATH):
         "ALTER TABLE clinics ADD COLUMN primary_staff_name TEXT",
         "ALTER TABLE clinics ADD COLUMN primary_staff_email TEXT",
         "ALTER TABLE clinics ADD COLUMN primary_staff_linkedin TEXT",
+        "ALTER TABLE clinics ADD COLUMN clinic_email TEXT",
     ]
     for stmt in migrations:
         try:
@@ -375,6 +376,13 @@ def update_staff_count(
         "primary_staff_email = ?, primary_staff_linkedin = ? WHERE id = ?",
         (count, json.dumps(names or []), primary_staff_name, primary_staff_email, primary_staff_linkedin, clinic_id),
     )
+    conn.commit()
+    conn.close()
+
+
+def update_clinic_email(clinic_id: int, email: str = None, db_path: str = DB_PATH):
+    conn = get_conn(db_path)
+    conn.execute("UPDATE clinics SET clinic_email = ? WHERE id = ?", (email, clinic_id))
     conn.commit()
     conn.close()
 
