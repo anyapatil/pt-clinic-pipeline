@@ -379,6 +379,22 @@ def update_staff_count(
     conn.close()
 
 
+def update_primary_contact(
+    clinic_id: int,
+    name: str = None,
+    email: str = None,
+    linkedin: str = None,
+    db_path: str = DB_PATH,
+):
+    conn = get_conn(db_path)
+    conn.execute(
+        "UPDATE clinics SET primary_staff_name = ?, primary_staff_email = ?, primary_staff_linkedin = ? WHERE id = ?",
+        (name, email, linkedin, clinic_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_distinct_cities(db_path: str = DB_PATH) -> list:
     conn = get_conn(db_path)
     rows = conn.execute(
