@@ -185,7 +185,9 @@ def export_csv():
     fieldnames = [
         "id", "name", "address", "city", "state", "zip_code",
         "phone", "website", "source", "specialty",
-        "cash_pay_signal", "cash_pay_keywords", "staff_count", "scraped_at",
+        "cash_pay_signal", "cash_pay_keywords", "staff_count",
+        "primary_contact_name", "primary_contact_email", "primary_contact_linkedin",
+        "scraped_at",
     ]
 
     output = io.StringIO()
@@ -203,6 +205,9 @@ def export_csv():
             )
         except Exception:
             c["cash_pay_keywords"] = ""
+        c["primary_contact_name"]     = c.get("primary_staff_name") or ""
+        c["primary_contact_email"]    = c.get("primary_staff_email") or ""
+        c["primary_contact_linkedin"] = c.get("primary_staff_linkedin") or ""
         writer.writerow(c)
 
     return Response(
@@ -371,7 +376,9 @@ def shortlist_export_csv():
     fieldnames = [
         "id", "name", "address", "city", "state", "zip_code",
         "phone", "website", "source", "specialty",
-        "cash_pay_signal", "cash_pay_keywords", "staff_count", "scraped_at",
+        "cash_pay_signal", "cash_pay_keywords", "staff_count",
+        "primary_contact_name", "primary_contact_email", "primary_contact_linkedin",
+        "scraped_at",
     ]
 
     output = io.StringIO()
@@ -385,6 +392,9 @@ def shortlist_export_csv():
         c["specialty"] = " / ".join(spec_parts)
         kws = c.get("cash_pay_keywords", [])
         c["cash_pay_keywords"] = ", ".join(kws) if isinstance(kws, list) else ""
+        c["primary_contact_name"]     = c.get("primary_staff_name") or ""
+        c["primary_contact_email"]    = c.get("primary_staff_email") or ""
+        c["primary_contact_linkedin"] = c.get("primary_staff_linkedin") or ""
         writer.writerow(c)
 
     return Response(

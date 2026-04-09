@@ -174,7 +174,11 @@ def upsert_clinic(data: dict, db_path: str = DB_PATH) -> int:
             specialty_ortho   = MAX(excluded.specialty_ortho,   clinics.specialty_ortho),
             specialty_pelvic  = MAX(excluded.specialty_pelvic,  clinics.specialty_pelvic),
             cash_pay_signal   = MAX(excluded.cash_pay_signal,   clinics.cash_pay_signal),
-            cash_pay_keywords = COALESCE(excluded.cash_pay_keywords, clinics.cash_pay_keywords),
+            cash_pay_keywords = CASE
+                WHEN excluded.cash_pay_keywords IS NOT NULL AND excluded.cash_pay_keywords != '[]'
+                THEN excluded.cash_pay_keywords
+                ELSE clinics.cash_pay_keywords
+            END,
             scraped_at        = excluded.scraped_at,
             website_checked_at = COALESCE(excluded.website_checked_at, clinics.website_checked_at)
         """,
