@@ -61,8 +61,27 @@ _PT_CRED_RE = re.compile(
 # Email address pattern
 _EMAIL_RE = re.compile(r"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
 
+# Local-parts that indicate a generic/role address rather than a personal one
+_GENERIC_EMAIL_PREFIXES = frozenset({
+    "info", "contact", "admin", "office", "support", "hello", "help",
+    "noreply", "no-reply", "webmaster", "postmaster", "mail", "email",
+    "enquiries", "enquiry", "inquiry", "questions", "general", "billing",
+    "reception", "appointments", "scheduling", "hello", "team", "clinic",
+    "staff", "therapy", "pt", "front", "frontdesk", "desk", "care",
+})
+
 # LinkedIn personal profile URL pattern (linkedin.com/in/username)
 _LINKEDIN_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/in/[\w\-]+", re.I)
+
+# Href/text patterns that suggest a contact or about page
+_CONTACT_HREF_RE = re.compile(
+    r"contact|about|reach|connect|location|locations|get-in-touch|find-us",
+    re.I,
+)
+_CONTACT_TEXT_RE = re.compile(
+    r"contact us|about us|reach us|get in touch|find us|our location",
+    re.I,
+)
 
 # Section-level headings that are titles, not names (exact full-text match)
 _GENERIC_HEADINGS = {
@@ -246,21 +265,68 @@ def _extract_linkedin(html: str) -> str | None:
     return m.group(0).rstrip("/") if m else None
 
 
+def _is_generic_email(email: str) -> bool:
+    local = email.split("@")[0].lower().lstrip("+")
+    return local in _GENERIC_EMAIL_PREFIXES
+
+
 def _extract_email(html: str) -> str | None:
     """
-    Return the first publicly visible email address found in html.
-    Prefers explicit mailto: href links; falls back to regex on page text.
+    Return the first non-generic email address found in html.
+    Collects all candidates (mailto: links first, then page text), skips
+    generic role addresses (info@, contact@, admin@, etc.), and returns
+    the first personal-looking one. Returns None if only generic addresses
+    are present.
     """
     bs = BeautifulSoup(html, "lxml")
+    seen: set[str] = set()
+    candidates: list[str] = []
+
+    # Mailto links are the most reliable source
     for a in bs.find_all("a", href=True):
         href = a["href"].strip()
         if href.lower().startswith("mailto:"):
-            email = href[7:].split("?")[0].strip()
-            if _EMAIL_RE.match(email):
-                return email
-    text = bs.get_text(" ", strip=True)
-    m = _EMAIL_RE.search(text)
-    return m.group(0) if m else None
+            email = href[7:].split("?")[0].strip().lower()
+            if _EMAIL_RE.match(email) and email not in seen:
+                seen.add(email)
+                candidates.append(email)
+
+    # Plain text fallback — catches emails not wrapped in mailto:
+    for m in _EMAIL_RE.finditer(bs.get_text(" ", strip=True)):
+        email = m.group(0).lower()
+        if email not in seen:
+            seen.add(email)
+            candidates.append(email)
+
+    for email in candidates:
+        if not _is_generic_email(email):
+            return email
+    return None
+
+
+def _find_contact_links(html: str, base_url: str, exclude: set[str]) -> list[str]:
+    """Return up to 2 internal contact/about page links not already in exclude."""
+    bs = BeautifulSoup(html, "lxml")
+    base_domain = urlparse(base_url).netloc
+    seen: set[str] = set()
+    links: list[str] = []
+
+    for a in bs.find_all("a", href=True):
+        href = a["href"].strip()
+        text = a.get_text(" ", strip=True)
+        parsed = urlparse(urljoin(base_url, href))
+        if parsed.netloc and parsed.netloc != base_domain:
+            continue
+        full_url = urljoin(base_url, href).split("#")[0]
+        if not full_url.startswith("http") or full_url in seen or full_url in exclude:
+            continue
+        if _CONTACT_HREF_RE.search(href) or _CONTACT_TEXT_RE.search(text):
+            seen.add(full_url)
+            links.append(full_url)
+        if len(links) >= 2:
+            break
+
+    return links
 
 
 def _find_team_links(html: str, base_url: str) -> list[str]:
@@ -423,9 +489,12 @@ def scrape_staff_count(website_url: str) -> tuple[int | None, list[str], str | N
         primary_email = _extract_email(html)
         primary_linkedin = _extract_linkedin(html)
 
+        visited: set[str] = {website_url}
+
         for team_url in _find_team_links(html, website_url):
             polite_sleep()
             page_html = fetch_html(team_url)
+            visited.add(team_url)
             if page_html:
                 count, names, page_primary = _count_staff_in_html(page_html)
                 if count > best:
@@ -437,6 +506,19 @@ def scrape_staff_count(website_url: str) -> tuple[int | None, list[str], str | N
                     primary_email = _extract_email(page_html)
                 if primary_linkedin is None:
                     primary_linkedin = _extract_linkedin(page_html)
+
+        # If email still missing, check contact/about pages
+        if primary_email is None:
+            for contact_url in _find_contact_links(html, website_url, exclude=visited):
+                polite_sleep()
+                page_html = fetch_html(contact_url)
+                if page_html:
+                    if primary_email is None:
+                        primary_email = _extract_email(page_html)
+                    if primary_linkedin is None:
+                        primary_linkedin = _extract_linkedin(page_html)
+                if primary_email is not None:
+                    break
 
         return best, best_names, primary_name, primary_email, primary_linkedin
 
